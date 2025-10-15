@@ -1,0 +1,9 @@
+# Binary dosyaları dışarıda bırak
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.ico
+*.zip
+*.env
+*.sqlite
