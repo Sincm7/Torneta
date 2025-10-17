@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 const navLinks = [
   { name: 'Home', path: '/' },
   { name: 'Pricing', path: '/pricing' },
+  { name: 'Analyze', path: '/analyze' },
 ];
 
 export default function Navbar() {
