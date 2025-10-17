@@ -7,6 +7,7 @@ export default function AnalyzePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [analysis, setAnalysis] = useState(null);
 
   const handleAnalyze = async (event) => {
     event.preventDefault();
@@ -40,8 +41,9 @@ export default function AnalyzePage() {
       setIsSubmitting(true);
       setErrorMessage('');
       setSuccessMessage('');
+      setAnalysis(null);
 
-      const response = await fetch('https://api.torneta.ai/analyze', {
+      const response = await fetch('https://sincm.app.n8n.cloud/webhook/form-submission-secure', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -62,7 +64,12 @@ export default function AnalyzePage() {
         throw new Error('Request failed');
       }
 
-      setSuccessMessage('Analysis request submitted. Check the console for the response.');
+      if (data && (data.pointAverage !== undefined || data.pointDS !== undefined || data.pointGM !== undefined || data.pointGPT !== undefined)) {
+        setAnalysis(data);
+        setSuccessMessage('Analysis report received.');
+      } else {
+        setSuccessMessage('Analysis request submitted.');
+      }
     } catch (error) {
       console.error('Analyze error:', error);
       setErrorMessage('Something went wrong while submitting your analysis request. Please try again.');
@@ -156,6 +163,64 @@ export default function AnalyzePage() {
               {isSubmitting ? 'Running Analysis...' : 'Run Analysis'}
             </button>
           </form>
+
+          {analysis && (
+            <div className="mt-12 space-y-8">
+              <div className="text-center">
+                <h2 className="text-2xl font-semibold text-neutral-900">Analysis Results</h2>
+                <p className="mt-2 text-sm text-neutral-600">Your AI visibility scores and competitor landscape</p>
+              </div>
+
+              <div className="rounded-3xl border border-neutral-200 bg-white/70 p-8 shadow-sm">
+                <div className="text-center">
+                  <div className="text-xs font-medium uppercase tracking-widest text-neutral-500">Average Score</div>
+                  <div className="mt-2 text-5xl font-bold text-neutral-900">{Number(analysis.pointAverage ?? 0).toFixed(2)}</div>
+                </div>
+
+                <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <div className="rounded-2xl border border-neutral-200 p-4 text-center">
+                    <div className="text-xs font-medium uppercase tracking-widest text-neutral-500">DS Score</div>
+                    <div className="mt-1 text-2xl font-semibold text-neutral-900">{Number(analysis.pointDS ?? 0).toFixed(2)}</div>
+                  </div>
+                  <div className="rounded-2xl border border-neutral-200 p-4 text-center">
+                    <div className="text-xs font-medium uppercase tracking-widest text-neutral-500">GM Score</div>
+                    <div className="mt-1 text-2xl font-semibold text-neutral-900">{Number(analysis.pointGM ?? 0).toFixed(2)}</div>
+                  </div>
+                  <div className="rounded-2xl border border-neutral-200 p-4 text-center">
+                    <div className="text-xs font-medium uppercase tracking-widest text-neutral-500">GPT Score</div>
+                    <div className="mt-1 text-2xl font-semibold text-neutral-900">{Number(analysis.pointGPT ?? 0).toFixed(2)}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
+                <div className="rounded-3xl border border-neutral-200 bg-white/70 p-6 shadow-sm">
+                  <div className="text-sm font-semibold text-neutral-900">Competitors (DP)</div>
+                  <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-neutral-700">
+                    {(analysis.competitor_listDP ?? []).map((item, idx) => (
+                      <li key={`dp-${idx}`}>{String(item)}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="rounded-3xl border border-neutral-200 bg-white/70 p-6 shadow-sm">
+                  <div className="text-sm font-semibold text-neutral-900">Competitors (GM)</div>
+                  <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-neutral-700">
+                    {(analysis.competitor_listGM ?? []).map((item, idx) => (
+                      <li key={`gm-${idx}`}>{String(item)}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="rounded-3xl border border-neutral-200 bg-white/70 p-6 shadow-sm">
+                  <div className="text-sm font-semibold text-neutral-900">Competitors (GPT)</div>
+                  <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-neutral-700">
+                    {(analysis.competitor_listGPT ?? []).map((item, idx) => (
+                      <li key={`gpt-${idx}`}>{String(item)}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
