@@ -1,0 +1,163 @@
+import { useState } from 'react';
+
+export default function AnalyzePage() {
+  const [companyName, setCompanyName] = useState('');
+  const [companyDomain, setCompanyDomain] = useState('');
+  const [promptsInput, setPromptsInput] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+
+  const handleAnalyze = async (event) => {
+    event.preventDefault();
+
+    const trimmedName = companyName.trim();
+    const trimmedDomain = companyDomain.trim();
+    const promptsArray = promptsInput
+      .split(',')
+      .map((prompt) => prompt.trim())
+      .filter(Boolean);
+
+    if (!trimmedName || !trimmedDomain || promptsArray.length === 0) {
+      setErrorMessage('All fields are required.');
+      setSuccessMessage('');
+      return;
+    }
+
+    if (promptsArray.length < 3 || promptsArray.length > 12) {
+      setErrorMessage('Please provide between 3 and 12 prompts separated by commas.');
+      setSuccessMessage('');
+      return;
+    }
+
+    const payload = {
+      companyName: trimmedName,
+      companyDomain: trimmedDomain,
+      prompts: promptsArray,
+    };
+
+    try {
+      setIsSubmitting(true);
+      setErrorMessage('');
+      setSuccessMessage('');
+
+      const response = await fetch('https://api.torneta.ai/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      let data = null;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        // Response might not be JSON which is acceptable for this placeholder endpoint
+      }
+
+      console.log('Analyze response:', data ?? response);
+
+      if (!response.ok) {
+        throw new Error('Request failed');
+      }
+
+      setSuccessMessage('Analysis request submitted. Check the console for the response.');
+    } catch (error) {
+      console.error('Analyze error:', error);
+      setErrorMessage('Something went wrong while submitting your analysis request. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="bg-white py-24">
+      <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-2xl rounded-3xl border border-neutral-200 bg-white/80 p-10 shadow-sm">
+          <div className="text-center">
+            <span className="inline-flex rounded-full bg-primary/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-primary">
+              Analyze
+            </span>
+            <h1 className="mt-6 text-4xl font-semibold tracking-tight text-neutral-900 sm:text-5xl">
+              AI Visibility Analysis
+            </h1>
+            <p className="mt-4 text-base leading-relaxed text-neutral-600">
+              Enter your company info and target prompts to prepare for your AI visibility review.
+            </p>
+          </div>
+
+          <form className="mt-12 space-y-6" onSubmit={handleAnalyze} noValidate>
+            <div className="space-y-2">
+              <label htmlFor="companyName" className="text-sm font-medium text-neutral-700">
+                Company Name
+              </label>
+              <input
+                id="companyName"
+                type="text"
+                value={companyName}
+                onChange={(event) => setCompanyName(event.target.value)}
+                className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-base text-neutral-900 shadow-sm transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                placeholder="Acme Inc."
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="companyDomain" className="text-sm font-medium text-neutral-700">
+                Company Domain
+              </label>
+              <input
+                id="companyDomain"
+                type="text"
+                value={companyDomain}
+                onChange={(event) => setCompanyDomain(event.target.value)}
+                className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-base text-neutral-900 shadow-sm transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                placeholder="acme.com"
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label htmlFor="prompts" className="text-sm font-medium text-neutral-700">
+                  Prompts
+                </label>
+                <span className="text-xs text-neutral-500">3-12 prompts, separated by commas</span>
+              </div>
+              <textarea
+                id="prompts"
+                value={promptsInput}
+                onChange={(event) => setPromptsInput(event.target.value)}
+                rows={5}
+                className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-base text-neutral-900 shadow-sm transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                placeholder="What are the best project management tools?, How do I choose an AI visibility partner?, ..."
+                required
+              />
+            </div>
+
+            {errorMessage && (
+              <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {errorMessage}
+              </div>
+            )}
+
+            {successMessage && (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                {successMessage}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="inline-flex w-full items-center justify-center rounded-full bg-primary px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-primary/20 transition hover:-translate-y-0.5 hover:bg-primary-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-70"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? 'Running Analysis...' : 'Run Analysis'}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
