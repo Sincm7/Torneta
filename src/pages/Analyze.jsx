@@ -36,6 +36,38 @@ export default function AnalyzePage() {
     });
   };
 
+  const sendEmailNotification = async (data) => {
+    try {
+      const emailPayload = {
+        to: data.email, // Kullanıcının girdiği business email
+        subject: `Your AIRO Analysis Report - ${data.companyName}`,
+        companyName: data.companyName,
+        companyDomain: data.companyDomain,
+        promptsCount: data.promptsCount,
+        analysisData: data.analysisData,
+      };
+
+      // Send email via webhook or email service
+      const emailResponse = await fetch('https://sincm.app.n8n.cloud/webhook/email-notification', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        mode: 'cors',
+        body: JSON.stringify(emailPayload),
+      });
+
+      if (!emailResponse.ok) {
+        console.warn('Email notification failed, but analysis was successful');
+      } else {
+        console.log('Email sent successfully to:', data.email);
+      }
+    } catch (emailError) {
+      console.error('Email notification error:', emailError);
+      // Don't throw - email failure shouldn't block the analysis success
+    }
+  };
+
   const handleAnalyze = async (event) => {
     event.preventDefault();
 
@@ -111,6 +143,15 @@ export default function AnalyzePage() {
       } else {
         setAnalysis(null);
       }
+
+      // Send email notification
+      await sendEmailNotification({
+        companyName: trimmedName,
+        companyDomain: trimmedDomain,
+        email: trimmedEmail,
+        promptsCount: promptsArray.length,
+        analysisData: normalized,
+      });
 
       setCompanyName('');
       setCompanyDomain('');
@@ -235,7 +276,7 @@ export default function AnalyzePage() {
               className="inline-flex w-full items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-primary/20 transition hover:-translate-y-0.5 hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-70"
               disabled={isSubmitting}
             >
-              {isSubmitting ? 'Running Analysis...' : 'Run Analysis'}
+              {isSubmitting ? 'Running Analysis...' : 'Get Report'}
             </button>
           </form>
 
@@ -268,30 +309,53 @@ export default function AnalyzePage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
-                <div className="rounded-3xl border border-neutral-200 bg-white/70 p-6 shadow-sm">
-                  <div className="text-sm font-semibold text-neutral-900">Competitors (DP)</div>
-                  <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-neutral-700">
-                    {(analysis.competitor_listDP ?? []).map((item, idx) => (
-                      <li key={`dp-${idx}`}>{String(item)}</li>
-                    ))}
-                  </ul>
-                </div>
-                <div className="rounded-3xl border border-neutral-200 bg-white/70 p-6 shadow-sm">
-                  <div className="text-sm font-semibold text-neutral-900">Competitors (GM)</div>
-                  <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-neutral-700">
-                    {(analysis.competitor_listGM ?? []).map((item, idx) => (
-                      <li key={`gm-${idx}`}>{String(item)}</li>
-                    ))}
-                  </ul>
-                </div>
-                <div className="rounded-3xl border border-neutral-200 bg-white/70 p-6 shadow-sm">
-                  <div className="text-sm font-semibold text-neutral-900">Competitors (GPT)</div>
-                  <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-neutral-700">
-                    {(analysis.competitor_listGPT ?? []).map((item, idx) => (
-                      <li key={`gpt-${idx}`}>{String(item)}</li>
-                    ))}
-                  </ul>
+              <div className="rounded-3xl border border-neutral-200 bg-white/70 p-6 shadow-sm">
+                <div className="text-sm font-semibold text-neutral-900 mb-4">Competitors</div>
+                <div className="space-y-3">
+                  {(() => {
+                    // Tüm competitor listelerini birleştir
+                    const allCompetitors = [
+                      ...(analysis.competitor_listDP ?? []),
+                      ...(analysis.competitor_listGM ?? []),
+                      ...(analysis.competitor_listGPT ?? [])
+                    ];
+
+                    // Her şirket için en yüksek score'u bul
+                    const competitorMap = {};
+                    allCompetitors.forEach(item => {
+                      if (typeof item === 'object' && item.company_name) {
+                        const name = item.company_name;
+                        const score = item.company_score || 0;
+                        
+                        if (!competitorMap[name] || competitorMap[name].score < score) {
+                          competitorMap[name] = {
+                            name: name,
+                            domain: item.company_domain,
+                            score: score
+                          };
+                        }
+                      }
+                    });
+
+                    // Object'i array'e çevir ve score'a göre sırala
+                    const sortedCompetitors = Object.values(competitorMap)
+                      .sort((a, b) => b.score - a.score);
+
+                    return sortedCompetitors.map((competitor, idx) => (
+                      <div key={`competitor-${idx}`} className="flex items-center justify-between p-3 bg-white rounded-lg border border-neutral-200">
+                        <div className="flex-1">
+                          <div className="font-medium text-neutral-900">{competitor.name}</div>
+                          <div className="text-xs text-neutral-500">{competitor.domain}</div>
+                        </div>
+                        <div className="ml-4 flex items-center gap-2">
+                          <span className="text-xs text-neutral-500">Mentions</span>
+                          <span className="inline-flex items-center justify-center min-w-[2rem] h-8 px-2 rounded-full bg-primary/10 text-sm font-semibold text-primary">
+                            {competitor.score}
+                          </span>
+                        </div>
+                      </div>
+                    ));
+                  })()}
                 </div>
               </div>
             </div>
