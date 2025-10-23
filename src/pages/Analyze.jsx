@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 
 export default function AnalyzePage() {
@@ -10,6 +10,12 @@ export default function AnalyzePage() {
   const [errorMessage, setErrorMessage] = useState('');
   const [analysis, setAnalysis] = useState(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showCompetitors, setShowCompetitors] = useState(false);
+  const [showChecklist, setShowChecklist] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const reportRef = useRef(null);
+  const [submittedMeta, setSubmittedMeta] = useState({ name: '', domain: '' });
+  const [showDownloadToast, setShowDownloadToast] = useState(false);
 
   useEffect(() => {
     if (!showSuccessModal) {
@@ -22,6 +28,13 @@ export default function AnalyzePage() {
 
     return () => clearTimeout(timeout);
   }, [showSuccessModal]);
+
+  // Auto-hide download toast
+  useEffect(() => {
+    if (!showDownloadToast) return undefined;
+    const t = setTimeout(() => setShowDownloadToast(false), 2000);
+    return () => clearTimeout(t);
+  }, [showDownloadToast]);
 
   const handleAddPrompt = () => {
     if (prompts.length >= 12) return;
@@ -139,10 +152,15 @@ export default function AnalyzePage() {
           normalized.pointGPT !== undefined
         )
       ) {
+        console.log('Setting analysis with checklist:', normalized.checklist ? 'Yes' : 'No');
+        console.log('Full normalized data:', normalized);
         setAnalysis(normalized);
       } else {
         setAnalysis(null);
       }
+
+      // Remember submitted meta for PDF naming/header
+      setSubmittedMeta({ name: trimmedName, domain: trimmedDomain });
 
       // Send email notification
       await sendEmailNotification({
@@ -173,6 +191,196 @@ export default function AnalyzePage() {
       }
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!reportRef.current) return;
+    try {
+      setIsExporting(true);
+      // Lazy-load jsPDF
+      const [{ jsPDF }] = await Promise.all([
+        import('jspdf')
+      ]);
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 16; // daha ferah kenar boşluğu
+
+      // Soft blur-like pale blue background
+      pdf.setFillColor('#F5F9FF');
+      pdf.rect(0, 0, pageWidth, pageHeight, 'F');
+      pdf.setFillColor('#EAF2FF');
+      pdf.circle(pageWidth - 20, 18, 22, 'F');
+      pdf.setFillColor('#E3EEFF');
+      pdf.circle(28, pageHeight - 22, 26, 'F');
+
+      // Header
+      pdf.setTextColor('#1d4ed8');
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(20);
+      pdf.text('AIRO Report', margin, 20);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(11);
+      const brandName = submittedMeta.name || companyName || 'Brand';
+      const domain = submittedMeta.domain || analysis?.companyDomain || '';
+      const dateStr = new Date().toLocaleString();
+      pdf.setTextColor('#111111');
+      pdf.text(`${brandName}`, margin, 28);
+      pdf.setTextColor('#6b7280');
+      pdf.text(`${domain || ''}`, margin, 34);
+      pdf.setTextColor('#111111');
+      pdf.text(`${dateStr}`, margin, 40);
+
+      // Divider
+      pdf.setDrawColor(220);
+      pdf.line(margin, 44, pageWidth - margin, 44);
+
+      let y = 54;
+      const lineGap = 10;
+      const cardGap = 8;
+
+      const ensureY = (advance) => {
+        if (y + advance > pageHeight - 16) {
+          pdf.addPage();
+          y = margin + 8;
+        }
+      };
+
+      // Scores Section
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor('#1d4ed8');
+      pdf.text('AI Visibility Scores', margin, y);
+      y += 6;
+      pdf.setTextColor('#111111');
+      pdf.setFont('helvetica', 'normal');
+      // Draw score chips (card-like)
+      const chips = [
+        { label: 'AIRO', value: Number(analysis.pointAverage ?? 0).toFixed(2) },
+        { label: 'ChatGPT', value: Number(analysis.pointGPT ?? 0).toFixed(2) },
+        { label: 'Gemini', value: Number(analysis.pointGM ?? 0).toFixed(2) },
+        { label: 'DeepSeek', value: Number(analysis.pointDS ?? 0).toFixed(2) },
+      ];
+      let x = margin;
+      const chipH = 12;
+      const chipPadX = 4;
+      const chipPadY = 3;
+      const gapX = 6;
+      chips.forEach((c) => {
+        const txt = `${c.label}: ${c.value}`;
+        const w = pdf.getTextWidth(txt) + chipPadX * 2;
+        ensureY(chipH + cardGap);
+        if (x + w > pageWidth - margin) {
+          x = margin; y += chipH + 6;
+        }
+        pdf.setDrawColor(220);
+        pdf.roundedRect(x, y, w, chipH, 2, 2, 'S');
+        pdf.setTextColor('#111111');
+        pdf.text(txt, x + chipPadX, y + chipH - chipPadY - 1);
+        x += w + gapX;
+      });
+      y += chipH + 10;
+      x = margin;
+
+      // Divider
+      pdf.setDrawColor(235);
+      pdf.line(margin, y + 2, pageWidth - margin, y + 2);
+      y += 10;
+
+      // Competitors: always include (even if collapsed in UI)
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor('#1d4ed8');
+      pdf.text('Competitors (Mentions)', margin, y);
+      y += 6;
+      pdf.setTextColor('#111111');
+      pdf.setFont('helvetica', 'normal');
+
+      const allCompetitors = [
+        ...(analysis.competitor_listDP ?? []),
+        ...(analysis.competitor_listGM ?? []),
+        ...(analysis.competitor_listGPT ?? [])
+      ];
+      const compMap = {};
+      allCompetitors.forEach((c) => {
+        if (c && c.company_name) {
+          const nm = c.company_name;
+          const sc = c.company_score || 0;
+          if (!compMap[nm] || compMap[nm].score < sc) {
+            compMap[nm] = { name: nm, domain: c.company_domain, score: sc };
+          }
+        }
+      });
+      const compArr = Object.values(compMap).sort((a, b) => b.score - a.score);
+      if (compArr.length === 0) {
+        pdf.text('No competitor data available.', margin, y);
+        y += lineGap;
+      } else {
+        compArr.forEach((c) => {
+          const line = `${c.name}  (${c.domain || 'n/a'})  • Mentions: ${c.score}`;
+          // New page if needed
+          if (y > pageHeight - 20) {
+            pdf.addPage();
+            y = margin;
+          }
+          // Card-like row
+          const rowH = 12;
+          const w = pageWidth - margin * 2;
+          pdf.setDrawColor(220);
+          pdf.roundedRect(margin, y - (rowH - 2), w, rowH, 2, 2, 'S');
+          pdf.text(line, margin + 5, y);
+          y += rowH + 2;
+        });
+      }
+
+      // Divider
+      pdf.setDrawColor(235);
+      pdf.line(margin, y + 2, pageWidth - margin, y + 2);
+      y += 10;
+
+      // Checklist (if exists)
+      if (Array.isArray(analysis.checklist) && analysis.checklist.length > 0) {
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor('#1d4ed8');
+        pdf.text('Optimization Checklist', margin, y);
+        y += 6;
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor('#111111');
+
+        analysis.checklist.forEach((item) => {
+          const weightStr = Number(item.weight).toFixed(2);
+          const line = `${item.name}  (Weight: ${weightStr})`;
+          if (y > pageHeight - 20) {
+            pdf.addPage();
+            y = margin;
+          }
+          // Card row with colored dot
+          const rowH = 12;
+          const w = pageWidth - margin * 2;
+          pdf.setDrawColor(220);
+          pdf.roundedRect(margin, y - (rowH - 2), w, rowH, 2, 2, 'S');
+          // status dot
+          if (item.score > 0) pdf.setFillColor('#22c55e'); else pdf.setFillColor('#ef4444');
+          pdf.circle(margin + 5, y - 3, 2.2, 'F');
+          pdf.setTextColor('#111111');
+          pdf.text(line, margin + 10, y);
+          y += rowH + 2;
+        });
+      }
+
+      // Footer branding
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+      pdf.setTextColor('#1d4ed8');
+      pdf.text('Generated via Torneta AIRO Platform', margin, pageHeight - 8);
+
+      const safeName = (submittedMeta.name || companyName || 'Brand').replace(/[^a-z0-9 _-]/gi, '_');
+      pdf.save(`${safeName} AIRO Report.pdf`);
+
+      setShowDownloadToast(true);
+    } catch (e) {
+      console.error('PDF export failed:', e);
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -281,7 +489,7 @@ export default function AnalyzePage() {
           </form>
 
           {analysis && (
-            <div className="mt-12 space-y-8">
+            <div ref={reportRef} className="mt-12 space-y-8 relative">
               <div className="text-center">
                 <h2 className="text-2xl font-semibold text-neutral-900">Analysis Results</h2>
                 <p className="mt-2 text-sm text-neutral-600">Your AI visibility scores and competitor landscape</p>
@@ -309,54 +517,151 @@ export default function AnalyzePage() {
                 </div>
               </div>
 
-              <div className="rounded-3xl border border-neutral-200 bg-white/70 p-6 shadow-sm">
-                <div className="text-sm font-semibold text-neutral-900 mb-4">Competitors</div>
-                <div className="space-y-3">
-                  {(() => {
-                    // Tüm competitor listelerini birleştir
-                    const allCompetitors = [
-                      ...(analysis.competitor_listDP ?? []),
-                      ...(analysis.competitor_listGM ?? []),
-                      ...(analysis.competitor_listGPT ?? [])
-                    ];
+              <div className="grid grid-cols-1 gap-6">
+                {/* Competitors - collapsible */}
+                <div className="rounded-3xl border border-neutral-200 bg-white/70 p-6 shadow-sm">
+                  <button
+                    type="button"
+                    onClick={() => setShowCompetitors((v) => !v)}
+                    className="flex w-full items-center justify-between text-left"
+                  >
+                    <div className="text-sm font-semibold text-neutral-900">Competitors</div>
+                    <span className="text-neutral-500">{showCompetitors ? '−' : '+'}</span>
+                  </button>
+                  {showCompetitors && (
+                    <div className="mt-4 space-y-3">
+                      {(() => {
+                      // Tüm competitor listelerini birleştir
+                      const allCompetitors = [
+                        ...(analysis.competitor_listDP ?? []),
+                        ...(analysis.competitor_listGM ?? []),
+                        ...(analysis.competitor_listGPT ?? [])
+                      ];
 
-                    // Her şirket için en yüksek score'u bul
-                    const competitorMap = {};
-                    allCompetitors.forEach(item => {
-                      if (typeof item === 'object' && item.company_name) {
-                        const name = item.company_name;
-                        const score = item.company_score || 0;
-                        
-                        if (!competitorMap[name] || competitorMap[name].score < score) {
-                          competitorMap[name] = {
-                            name: name,
-                            domain: item.company_domain,
-                            score: score
-                          };
+                      // Her şirket için en yüksek score'u bul
+                      const competitorMap = {};
+                      allCompetitors.forEach(item => {
+                        if (typeof item === 'object' && item.company_name) {
+                          const name = item.company_name;
+                          const score = item.company_score || 0;
+                          
+                          if (!competitorMap[name] || competitorMap[name].score < score) {
+                            competitorMap[name] = {
+                              name: name,
+                              domain: item.company_domain,
+                              score: score
+                            };
+                          }
                         }
-                      }
-                    });
+                      });
 
-                    // Object'i array'e çevir ve score'a göre sırala
-                    const sortedCompetitors = Object.values(competitorMap)
-                      .sort((a, b) => b.score - a.score);
+                      // Object'i array'e çevir ve score'a göre sırala
+                      const sortedCompetitors = Object.values(competitorMap)
+                        .sort((a, b) => b.score - a.score);
 
-                    return sortedCompetitors.map((competitor, idx) => (
-                      <div key={`competitor-${idx}`} className="flex items-center justify-between p-3 bg-white rounded-lg border border-neutral-200">
-                        <div className="flex-1">
-                          <div className="font-medium text-neutral-900">{competitor.name}</div>
-                          <div className="text-xs text-neutral-500">{competitor.domain}</div>
+                      return sortedCompetitors.map((competitor, idx) => (
+                        <div key={`competitor-${idx}`} className="flex items-center justify-between p-3 bg-white rounded-lg border border-neutral-200">
+                          <div className="flex-1">
+                            <div className="font-medium text-neutral-900">{competitor.name}</div>
+                            <div className="text-xs text-neutral-500">{competitor.domain}</div>
+                          </div>
+                          <div className="ml-4 flex items-center gap-2">
+                            <span className="text-xs text-neutral-500">Mentions</span>
+                            <span className="inline-flex items-center justify-center min-w-[2rem] h-8 px-2 rounded-full bg-primary/10 text-sm font-semibold text-primary">
+                              {competitor.score}
+                            </span>
+                          </div>
                         </div>
-                        <div className="ml-4 flex items-center gap-2">
-                          <span className="text-xs text-neutral-500">Mentions</span>
-                          <span className="inline-flex items-center justify-center min-w-[2rem] h-8 px-2 rounded-full bg-primary/10 text-sm font-semibold text-primary">
-                            {competitor.score}
-                          </span>
-                        </div>
-                      </div>
-                    ));
-                  })()}
+                      ));
+                    })()}
+                    </div>
+                  )}
                 </div>
+
+                {/* Checklist Section - collapsible */}
+                {analysis?.checklist && Array.isArray(analysis.checklist) && analysis.checklist.length > 0 && (
+                  <div className="rounded-3xl border border-neutral-200 bg-white/70 p-6 shadow-sm">
+                    <button
+                      type="button"
+                      onClick={() => setShowChecklist((v) => !v)}
+                      className="flex w-full items-center justify-between text-left"
+                    >
+                      <div className="text-sm font-semibold text-neutral-900">SEO Optimization Checklist</div>
+                      <span className="text-neutral-500">{showChecklist ? '−' : '+'}</span>
+                    </button>
+                    {showChecklist && (
+                      <div className="mt-4">
+                      {(() => {
+                      // Checklist'i kategorilere göre grupla
+                      const categorizedChecklist = {};
+                      analysis.checklist.forEach(item => {
+                        if (!categorizedChecklist[item.category]) {
+                          categorizedChecklist[item.category] = [];
+                        }
+                        categorizedChecklist[item.category].push(item);
+                      });
+
+                      return Object.entries(categorizedChecklist).map(([category, items]) => (
+                        <div key={category} className="mb-6 last:mb-0">
+                          <h4 className="text-sm font-semibold text-neutral-700 mb-3 uppercase tracking-wide">
+                            {category}
+                          </h4>
+                          <div className="space-y-2">
+                            {items.map((item, idx) => (
+                              <div 
+                                key={`${category}-${idx}`}
+                                className="flex items-center gap-3 p-3 bg-white rounded-lg border border-neutral-200"
+                              >
+                                {/* Status Icon */}
+                                <div className={`flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full ${
+                                  item.score > 0 
+                                    ? 'bg-green-500' 
+                                    : 'bg-red-500'
+                                }`}>
+                                  {item.score > 0 ? (
+                                    <span className="text-white text-sm font-bold">✓</span>
+                                  ) : (
+                                    <span className="text-white text-sm font-bold">✕</span>
+                                  )}
+                                </div>
+
+                                {/* Item Name */}
+                                <div className="flex-1">
+                                  <span className={`text-sm ${
+                                    item.score > 0 ? 'text-neutral-900' : 'text-neutral-600'
+                                  }`}>
+                                    {item.name}
+                                  </span>
+                                </div>
+
+                                {/* Score Badge */}
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-neutral-500">Weight:</span>
+                                  <span className="text-xs font-medium text-neutral-700">
+                                    {Number(item.weight).toFixed(2)}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ));
+                      })()}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              {/* Floating Download Button */}
+              <div className="sticky bottom-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleDownloadPdf}
+                  disabled={isExporting}
+                  className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-lg transition hover:brightness-110 disabled:opacity-60"
+                >
+                  <span className="inline-block">{isExporting ? 'Preparing…' : 'Download Report (PDF)'} </span>
+                </button>
               </div>
             </div>
           )}
@@ -379,6 +684,21 @@ export default function AnalyzePage() {
               <h3 className="text-lg font-semibold text-neutral-800">Analysis Submitted</h3>
               <p className="mt-2 text-sm text-neutral-500">We’ll reach out to you via email soon.</p>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Download toast */}
+      <AnimatePresence>
+        {showDownloadToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            transition={{ duration: 0.2 }}
+            className="fixed bottom-6 right-6 z-50 rounded-full bg-neutral-900 px-4 py-2 text-sm font-medium text-white shadow-lg"
+          >
+            ✅ Report successfully downloaded
           </motion.div>
         )}
       </AnimatePresence>
