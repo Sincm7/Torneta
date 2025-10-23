@@ -43,11 +43,13 @@ export default function AnalyzePage() {
       setSuccessMessage('');
       setAnalysis(null);
 
-      const response = await fetch('https://sincm.app.n8n.cloud/webhook/form-submission-secure', {
+      const response = await fetch('https://sincm.app.n8n.cloud/webhook-test/form-submission-secure', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
+        mode: 'cors',
         body: JSON.stringify(payload),
       });
 
@@ -61,18 +63,40 @@ export default function AnalyzePage() {
       console.log('Analyze response:', data ?? response);
 
       if (!response.ok) {
-        throw new Error('Request failed');
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`HTTP ${response.status}: ${errorText || 'Request failed'}`);
       }
 
-      if (data && (data.pointAverage !== undefined || data.pointDS !== undefined || data.pointGM !== undefined || data.pointGPT !== undefined)) {
-        setAnalysis(data);
+      // Normalize response: some flows return an array with a single result object
+      const normalized = Array.isArray(data) ? data[0] : data;
+
+      if (
+        normalized &&
+        (
+          normalized.pointAverage !== undefined ||
+          normalized.pointDS !== undefined ||
+          normalized.pointGM !== undefined ||
+          normalized.pointGPT !== undefined
+        )
+      ) {
+        setAnalysis(normalized);
         setSuccessMessage('Analysis report received.');
       } else {
         setSuccessMessage('Analysis request submitted.');
       }
     } catch (error) {
       console.error('Analyze error:', error);
-      setErrorMessage('Something went wrong while submitting your analysis request. Please try again.');
+      
+      // Provide more specific error messages based on the error type
+      if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+        setErrorMessage('Network error: Unable to connect to the analysis service. This might be due to CORS restrictions or the service being unavailable. Please check your internet connection and try again.');
+      } else if (error.message.includes('404')) {
+        setErrorMessage('Service not found: The analysis endpoint is not available. Please contact support.');
+      } else if (error.message.includes('CORS')) {
+        setErrorMessage('CORS error: The analysis service is not configured to accept requests from this domain. Please contact support.');
+      } else {
+        setErrorMessage(`Analysis failed: ${error.message || 'Something went wrong while submitting your analysis request. Please try again.'}`);
+      }
     } finally {
       setIsSubmitting(false);
     }
