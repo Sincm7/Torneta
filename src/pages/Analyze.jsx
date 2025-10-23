@@ -1,46 +1,74 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 
 export default function AnalyzePage() {
   const [companyName, setCompanyName] = useState('');
   const [companyDomain, setCompanyDomain] = useState('');
-  const [promptsInput, setPromptsInput] = useState('');
+  const [email, setEmail] = useState('');
+  const [prompts, setPrompts] = useState(['', '', '']);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
   const [analysis, setAnalysis] = useState(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+
+  useEffect(() => {
+    if (!showSuccessModal) {
+      return undefined;
+    }
+
+    const timeout = setTimeout(() => {
+      setShowSuccessModal(false);
+    }, 3000);
+
+    return () => clearTimeout(timeout);
+  }, [showSuccessModal]);
+
+  const handleAddPrompt = () => {
+    if (prompts.length >= 12) return;
+    setPrompts((prevPrompts) => [...prevPrompts, '']);
+  };
+
+  const handlePromptChange = (index, value) => {
+    setPrompts((prevPrompts) => {
+      const next = [...prevPrompts];
+      next[index] = value;
+      return next;
+    });
+  };
 
   const handleAnalyze = async (event) => {
     event.preventDefault();
 
     const trimmedName = companyName.trim();
     const trimmedDomain = companyDomain.trim();
-    const promptsArray = promptsInput
-      .split(',')
-      .map((prompt) => prompt.trim())
-      .filter(Boolean);
+    const trimmedEmail = email.trim();
+    const promptsArray = prompts.map((prompt) => prompt.trim()).filter(Boolean);
 
-    if (!trimmedName || !trimmedDomain || promptsArray.length === 0) {
-      setErrorMessage('All fields are required.');
-      setSuccessMessage('');
+    if (!trimmedEmail || !/.+@.+\..+/.test(trimmedEmail)) {
+      setErrorMessage('Please enter a valid business email.');
+      return;
+    }
+
+    if (!trimmedName || !trimmedDomain) {
+      setErrorMessage('Company name and domain are required.');
       return;
     }
 
     if (promptsArray.length < 3 || promptsArray.length > 12) {
-      setErrorMessage('Please provide between 3 and 12 prompts separated by commas.');
-      setSuccessMessage('');
+      setErrorMessage('Please provide between 3 and 12 prompts.');
       return;
     }
 
     const payload = {
       companyName: trimmedName,
       companyDomain: trimmedDomain,
+      email: trimmedEmail,
       prompts: promptsArray,
     };
 
     try {
       setIsSubmitting(true);
       setErrorMessage('');
-      setSuccessMessage('');
       setAnalysis(null);
 
       const response = await fetch('https://sincm.app.n8n.cloud/webhook-test/form-submission-secure', {
@@ -80,13 +108,18 @@ export default function AnalyzePage() {
         )
       ) {
         setAnalysis(normalized);
-        setSuccessMessage('Analysis report received.');
       } else {
-        setSuccessMessage('Analysis request submitted.');
+        setAnalysis(null);
       }
+
+      setCompanyName('');
+      setCompanyDomain('');
+      setEmail('');
+      setPrompts(['', '', '']);
+      setShowSuccessModal(true);
     } catch (error) {
       console.error('Analyze error:', error);
-      
+
       // Provide more specific error messages based on the error type
       if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
         setErrorMessage('Network error: Unable to connect to the analysis service. This might be due to CORS restrictions or the service being unavailable. Please check your internet connection and try again.');
@@ -120,6 +153,21 @@ export default function AnalyzePage() {
 
           <form className="mt-12 space-y-6" onSubmit={handleAnalyze} noValidate>
             <div className="space-y-2">
+              <label htmlFor="businessEmail" className="text-sm font-medium text-neutral-700">
+                Business Email
+              </label>
+              <input
+                id="businessEmail"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-base text-neutral-900 shadow-sm transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                placeholder="you@company.com"
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
               <label htmlFor="companyName" className="text-sm font-medium text-neutral-700">
                 Company Name
               </label>
@@ -151,20 +199,29 @@ export default function AnalyzePage() {
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label htmlFor="prompts" className="text-sm font-medium text-neutral-700">
-                  Prompts
-                </label>
-                <span className="text-xs text-neutral-500">3-12 prompts, separated by commas</span>
+                <label className="text-sm font-medium text-neutral-700">Prompts</label>
+                <span className="text-xs text-neutral-500">3-12 prompts</span>
               </div>
-              <textarea
-                id="prompts"
-                value={promptsInput}
-                onChange={(event) => setPromptsInput(event.target.value)}
-                rows={5}
-                className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-base text-neutral-900 shadow-sm transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                placeholder="What are the best project management tools?, How do I choose an AI visibility partner?, ..."
-                required
-              />
+              <div className="space-y-4">
+                {prompts.map((prompt, index) => (
+                  <input
+                    key={`prompt-${index}`}
+                    type="text"
+                    value={prompt}
+                    onChange={(event) => handlePromptChange(index, event.target.value)}
+                    className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-base text-neutral-900 shadow-sm transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    placeholder="Enter a target prompt…"
+                  />
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={handleAddPrompt}
+                className="inline-flex items-center text-sm font-semibold text-primary transition disabled:cursor-not-allowed disabled:opacity-40"
+                disabled={prompts.length >= 12}
+              >
+                + Add prompt
+              </button>
             </div>
 
             {errorMessage && (
@@ -173,15 +230,9 @@ export default function AnalyzePage() {
               </div>
             )}
 
-            {successMessage && (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                {successMessage}
-              </div>
-            )}
-
             <button
               type="submit"
-              className="inline-flex w-full items-center justify-center rounded-full bg-primary px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-primary/20 transition hover:-translate-y-0.5 hover:bg-primary-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-70"
+              className="inline-flex w-full items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-primary/20 transition hover:-translate-y-0.5 hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-70"
               disabled={isSubmitting}
             >
               {isSubmitting ? 'Running Analysis...' : 'Run Analysis'}
@@ -247,6 +298,26 @@ export default function AnalyzePage() {
           )}
         </div>
       </div>
+
+      <AnimatePresence>
+        {showSuccessModal && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            transition={{ duration: 0.3 }}
+            className="fixed inset-0 flex items-center justify-center bg-black/40 backdrop-blur-sm z-50"
+          >
+            <div className="bg-white rounded-2xl shadow-xl p-10 text-center w-full max-w-sm">
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-green-100">
+                <span className="text-3xl text-green-500">✓</span>
+              </div>
+              <h3 className="text-lg font-semibold text-neutral-800">Analysis Submitted</h3>
+              <p className="mt-2 text-sm text-neutral-500">We’ll reach out to you via email soon.</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

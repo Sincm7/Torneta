@@ -40,7 +40,7 @@ const plans = [
   },
   {
     name: 'Enterprise',
-    price: 'Let's Talk',
+    price: "Let's Talk",
     description: 'For global brands needing bespoke integrations, governance, and premium support.',
     features: [
       'Unlimited workspaces & seats',
