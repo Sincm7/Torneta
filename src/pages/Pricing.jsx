@@ -7,6 +7,7 @@ const plans = [
     name: 'Free',
     price: '$0',
     description: 'Perfect for getting started and understanding your baseline AI visibility.',
+    tagline: 'Monthly AIRO refresh, 1 brand workspace.',
     features: [
       '1 brand workspace',
       'Monthly AIRO Score refresh',
@@ -23,6 +24,7 @@ const plans = [
     name: 'Pro',
     price: '$249',
     description: 'For growth teams ready to monitor multiple assistants and deploy improvements weekly.',
+    tagline: 'Weekly AIRO Score refresh, 3 brand workspaces.',
     features: [
       '3 brand workspaces',
       'Weekly AIRO Score refresh',
@@ -42,6 +44,7 @@ const plans = [
     name: 'Enterprise',
     price: "Let's Talk",
     description: 'For global brands needing bespoke integrations, governance, and premium support.',
+    tagline: 'Daily AIRO Score refresh, unlimited workspaces & API access.',
     features: [
       'Unlimited workspaces & seats',
       'Daily AIRO Score + alerting',
@@ -58,6 +61,12 @@ const plans = [
     ],
   },
 ];
+
+const containerVariants = {
+  hidden: { opacity: 0, y: 24 },
+  visible: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -24 },
+};
 
 export default function PricingPage() {
   const [selectedPlan, setSelectedPlan] = useState(null);
@@ -118,36 +127,92 @@ export default function PricingPage() {
         </motion.p>
       </div>
 
-      <div className="mx-auto mt-16 grid max-w-6xl gap-8 px-4 sm:grid-cols-2 sm:px-6 lg:grid-cols-3 lg:px-8">
-        {plans.map((plan, index) => (
-          <motion.div
-            key={plan.name}
-            initial={{ opacity: 0, y: 32 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, amount: 0.4 }}
-            transition={{ delay: index * 0.1, duration: 0.6 }}
-            className={`group relative flex flex-col rounded-3xl border border-neutral-200 bg-white/70 p-8 shadow-sm transition duration-300 hover:-translate-y-2 hover:shadow-card ${
-              plan.highlight ? 'ring-2 ring-primary/60' : ''
-            }`}
-          >
-            <div className="pointer-events-none absolute inset-0 -z-10 rounded-3xl bg-gradient-to-br from-primary/0 via-primary/5 to-primary/10 opacity-0 transition group-hover:opacity-100" />
-            {plan.highlight && (
-              <span className="absolute right-6 top-6 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary">
-                Most Popular
+  return (
+    <div className="relative min-h-screen bg-white pb-24">
+      <div className="absolute inset-x-0 top-0 -z-10 h-96 bg-gradient-to-b from-primary/10 via-white to-white" />
+      <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col items-center px-4 pt-20 sm:px-6 lg:px-8">
+        <AnimatePresence mode="wait">
+          {!selectedPlan && (
+            <motion.div
+              key="pricing-header"
+              variants={containerVariants}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+              transition={{ duration: 0.55 }}
+              className="max-w-4xl text-center"
+            >
+              <span className="rounded-full bg-primary/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-primary">
+                Pricing
               </span>
-            )}
-            <div className="flex-1">
-              <h2 className="text-xl font-semibold text-neutral-900">{plan.name}</h2>
-              <p className="mt-3 text-4xl font-semibold text-neutral-900">{plan.price}</p>
-              <p className="mt-4 text-sm leading-relaxed text-neutral-600">{plan.description}</p>
-              <ul className="mt-8 space-y-3 text-left text-sm text-neutral-600">
-                {plan.features.map((feature) => (
-                  <li key={feature} className="flex items-start gap-3">
-                    <span className="mt-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-                      ✓
+              <h1 className="mt-6 text-4xl font-semibold tracking-tight text-neutral-900 sm:text-5xl">
+                Choose the plan that keeps your brand in the conversation.
+              </h1>
+              <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-neutral-600">
+                Simple, transparent pricing designed for marketing and communications teams building AI visibility from day one to
+                global scale.
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <div className="relative mt-16 flex w-full flex-1 items-center justify-center">
+          <AnimatePresence mode="wait">
+            {!selectedPlan && (
+              <motion.div
+                key="plan-grid"
+                initial={{ opacity: 0, scale: 0.96 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.92 }}
+                transition={{ duration: 0.5 }}
+                className="grid w-full max-w-6xl grid-cols-1 gap-6 md:grid-cols-3"
+              >
+                {plans.map((plan) => (
+                  <motion.button
+                    key={plan.name}
+                    layoutId={`plan-${plan.name}`}
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => setSelectedPlan(plan.name)}
+                    className={`group relative flex h-full flex-col rounded-3xl border border-neutral-200 bg-white/80 p-8 text-left shadow-sm outline-none transition focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
+                      plan.highlight ? 'ring-2 ring-primary/40' : ''
+                    }`}
+                  >
+                    <span className="sr-only">View {plan.name} plan details</span>
+                    <div className="pointer-events-none absolute inset-0 -z-10 rounded-3xl bg-gradient-to-br from-primary/0 via-primary/5 to-primary/10 opacity-0 transition group-hover:opacity-100" />
+                    {plan.highlight && (
+                      <span className="absolute right-6 top-6 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary">
+                        Most Popular
+                      </span>
+                    )}
+                    <div className="flex flex-1 flex-col">
+                      <h2 className="text-xl font-semibold text-neutral-900">{plan.name}</h2>
+                      <p className="mt-3 text-4xl font-semibold text-neutral-900">{plan.price}</p>
+                      <p className="mt-4 text-sm leading-relaxed text-neutral-600">{plan.description}</p>
+                      <ul className="mt-8 space-y-3 text-sm text-neutral-600">
+                        {plan.features.map((feature) => (
+                          <li key={feature} className="flex items-start gap-3">
+                            <span className="mt-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                              ✓
+                            </span>
+                            <span>{feature}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <span className="mt-10 inline-flex items-center gap-2 text-sm font-semibold text-primary">
+                      Explore plan
+                      <motion.span
+                        aria-hidden
+                        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-primary/40 text-xs"
+                        initial={{ x: 0 }}
+                        animate={{ x: 3 }}
+                        transition={{ repeat: Infinity, repeatType: 'reverse', duration: 1.4 }}
+                      >
+                        →
+                      </motion.span>
                     </span>
-                    <span>{feature}</span>
-                  </li>
+                  </motion.button>
                 ))}
               </ul>
             </div>
